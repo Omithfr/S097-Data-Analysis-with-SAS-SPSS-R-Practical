@@ -1,51 +1,62 @@
+library(tidyverse)
 
-library(dplyr)
-library(tidyr)
+df <- read.csv("kepler-exoplanet.csv") %>%
+  select(koi_fpflag_nt, koi_fpflag_ss, koi_period) %>%
+  filter(!is.na(koi_period))
 
+grand_mean <- mean(df$koi_period)
+N <- nrow(df)
 
-country_df <- read.csv("ESGCountry.csv", na.strings = c("", "NA"))
+stats_a <- df %>%
+  group_by(koi_fpflag_nt) %>%
+  summarise(mean_a = mean(koi_period), n_a = n()) %>%
+  mutate(ss_a_part = n_a * (mean_a - grand_mean)^2)
 
-country_df <- country_df %>% 
-  rename(alpha_2_code = X2.alpha.code) 
+SS_A <- sum(stats_a$ss_a_part)
+df_A <- nrow(stats_a) - 1  
 
-print("--- 1. Original Data (Selected Columns, First 6 Rows) ---")
-print(head(country_df[, c("Short.Name", "Region", "Income.Group", "Latest.population.census", "PPP.survey.year")]))
+stats_b <- df %>%
+  group_by(koi_fpflag_ss) %>%
+  summarise(mean_b = mean(koi_period), n_b = n()) %>%
+  mutate(ss_b_part = n_b * (mean_b - grand_mean)^2)
 
-print("--- Count of Missing Values per Column ---")
-na_counts <- colSums(is.na(country_df))
-print(na_counts[na_counts > 0])
+SS_B <- sum(stats_b$ss_b_part)
+df_B <- nrow(stats_b) - 1 
 
+stats_cells <- df %>%
+  group_by(koi_fpflag_nt, koi_fpflag_ss) %>%
+  summarise(
+    cell_mean = mean(koi_period),
+    n_ij = n(),
+    cell_var = var(koi_period),
+    .groups = 'drop'
+  ) %>%
+  mutate(
+    ss_error_part = (n_ij - 1) * ifelse(is.na(cell_var), 0, cell_var),
+    ss_between_cells_part = n_ij * (cell_mean - grand_mean)^2
+  )
 
-omit_target_cols <- country_df %>%
-  select(Short.Name, Region, Income.Group, Lending.category, PPP.survey.year)
+SS_Error <- sum(stats_cells$ss_error_part)
+SS_Between_Cells <- sum(stats_cells$ss_between_cells_part)
+SS_Interaction <- SS_Between_Cells - SS_A - SS_B
 
-clean_omit <- na.omit(omit_target_cols)
+df_Interaction <- df_A * df_B
+df_Error <- N - (nrow(stats_a) * nrow(stats_b))
 
-print("--- 2. Data after na.omit() ---")
-print(paste("Original rows:", nrow(country_df)))
-print(paste("Rows remaining:", nrow(clean_omit)))
-print(head(clean_omit))
+MS_A <- SS_A / df_A
+MS_B <- SS_B / df_B
+MS_Interaction <- SS_Interaction / df_Interaction
+MS_Error <- SS_Error / df_Error
 
+f_a <- MS_A / MS_Error
+f_b <- MS_B / MS_Error
+f_int <- MS_Interaction / MS_Error
 
+p_a <- pf(f_a, df_A, df_Error, lower.tail = FALSE)
+p_b <- pf(f_b, df_B, df_Error, lower.tail = FALSE)
+p_int <- pf(f_int, df_Interaction, df_Error, lower.tail = FALSE)
 
-avg_census_year <- round(mean(as.numeric(as.character(country_df$Latest.population.census)), na.rm = TRUE))
-
-median_ppp_year <- median(country_df$PPP.survey.year, na.rm = TRUE)
-
-clean_replace <- country_df %>%
-  replace_na(list(
-    Income.Group = "Not Classified",
-    Latest.population.census = as.character(avg_census_year),
-    PPP.survey.year = median_ppp_year
-  ))
-
-print("--- 3. Data after replace_na() ---")
-print(clean_replace[is.na(country_df$Income.Group) | is.na(country_df$PPP.survey.year), 
-                    c("Short.Name", "Income.Group", "Latest.population.census", "PPP.survey.year")])
-print(head(clean_replace[, c("Short.Name", "Income.Group", "Latest.population.census", "PPP.survey.year")]))
-
-print("--- Remaining NAs after replacement ---")
-na_counts_after <- colSums(is.na(clean_replace))
-print(na_counts_after[c("Income.Group", "Latest.population.census", "PPP.survey.year")])
-
-
+cat("=== MANUAL TWO-WAY ANOVA RESULTS ===\n")
+cat("Factor A (nt) F-Stat:", f_a, " P-Value:", p_a, "\n")
+cat("Factor B (ss) F-Stat:", f_b, " P-Value:", p_b, "\n")
+cat("Interaction F-Stat:", f_int, " P-Value:", p_int, "\n")
