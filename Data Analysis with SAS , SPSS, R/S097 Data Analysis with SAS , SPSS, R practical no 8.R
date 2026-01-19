@@ -1,9 +1,7 @@
-# R Script: Handling Missing Values (Data Cleaning)
 
 library(dplyr)
-library(tidyr) # Contains replace_na()
+library(tidyr)
 
-# 1. IMPORT DATASET
 
 country_df <- read.csv("ESGCountry.csv", na.strings = c("", "NA"))
 
@@ -17,7 +15,6 @@ print("--- Count of Missing Values per Column ---")
 na_counts <- colSums(is.na(country_df))
 print(na_counts[na_counts > 0])
 
-# 2. METHOD A: REMOVE MISSING VALUES (na.omit)
 
 omit_target_cols <- country_df %>%
   select(Short.Name, Region, Income.Group, Lending.category, PPP.survey.year)
@@ -30,7 +27,6 @@ print(paste("Rows remaining:", nrow(clean_omit)))
 print(head(clean_omit))
 
 
-# 3. METHOD B: REPLACE MISSING VALUES (replace_na)
 
 avg_census_year <- round(mean(as.numeric(as.character(country_df$Latest.population.census)), na.rm = TRUE))
 
@@ -51,4 +47,5 @@ print(head(clean_replace[, c("Short.Name", "Income.Group", "Latest.population.ce
 print("--- Remaining NAs after replacement ---")
 na_counts_after <- colSums(is.na(clean_replace))
 print(na_counts_after[c("Income.Group", "Latest.population.census", "PPP.survey.year")])
+
 
